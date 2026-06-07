@@ -1,0 +1,52 @@
+version: "3.8"
+
+services:
+  # Serviciul 1: Baza de date PostgreSQL
+  db:
+    image: postgres:15-alpine
+    container_name: po_postgres_db
+    restart: always
+    # Setăm variabilele de mediu necesare imaginii Postgres pentru a inițializa baza
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: password
+      POSTGRES_DB: po_management
+    ports:
+      # Expunem portul local pentru a te putea conecta cu DBeaver/pgAdmin la testare
+      - "5432:5432"
+    volumes:
+      # Mapăm un volum Docker pentru ca datele să nu se piardă dacă oprim containerul
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      # Verificăm dacă baza de date a pornit și e gata de conexiuni
+      test: ["CMD-SHELL", "pg_isready -U postgres -d po_management"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  # Serviciul 2: Backend-ul FastAPI
+  api:
+    build: 
+      context: . # Construiește folosind Dockerfile-ul din același director
+      dockerfile: Dockerfile
+    container_name: po_fastapi_backend
+    restart: always
+    # Mapăm portul intern 8000 la portul 8000 de pe mașina ta host
+    ports:
+      - "8000:8000"
+    # Aceste variabile vor fi citite de app/core/config.py (pydantic-settings)
+    environment:
+      - POSTGRES_SERVER=db  # Acesta trebuie să coincidă cu numele serviciului definit mai sus
+      - POSTGRES_USER=postgres
+      - POSTGRES_PASSWORD=password
+      - POSTGRES_DB=po_management
+      - SECRET_KEY=o_cheie_secreta_foarte_lunga_aici_pentru_dev
+    depends_on:
+      db:
+        # Așteptăm până când Postgres trece de 'healthcheck' înainte să pornim API-ul
+        # Acest lucru previne eroarea de conectare SQLAlchemy la startup
+        condition: service_healthy
+
+volumes:
+  # Definim volumul pentru persistența datelor din baza de date
+  postgres_data:
